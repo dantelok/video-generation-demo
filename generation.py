@@ -5,7 +5,8 @@ from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepSchedu
 
 import os
 import time
-import urllib
+import requests
+import json
 
 from PIL import Image as PIL_Image
 from google import genai
@@ -49,10 +50,10 @@ def wan_text_to_video(prompt, negative_prompt):
     return "output.mp4"
 
 
-def gcp_veo_3(prompt: str = "a cat reading a book", local_output_path: str = "./generated_video.mp4"):
-    PROJECT_ID = "dante-test-461016"
+def gcp_veo(prompt: str = "a cat reading a book", local_output_path: str = "./generated_video.mp4"):
+    PROJECT_ID = "gcp-credit-applying-to-g-suite"
     LOCATION = os.environ.get("GOOGLE_CLOUD_REGION", "us-central1")
-    BUCKET_NAME = "dante-test-461016-output"  # Replace with your GCS bucket name
+    BUCKET_NAME = "dante-test-123456-output"
     OUTPUT_GCS_PATH = f"gs://{BUCKET_NAME}/videos/output_{int(time.time())}.mp4"
 
     # Initialize Vertex AI
@@ -61,6 +62,7 @@ def gcp_veo_3(prompt: str = "a cat reading a book", local_output_path: str = "./
     # Initialize Generative AI client
     client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
 
+    # Video Generation Pipeline
     video_model = "veo-2.0-generate-001"
     # video_model = "veo-3.0-generate-preview"
     aspect_ratio = "16:9"
@@ -85,7 +87,7 @@ def gcp_veo_3(prompt: str = "a cat reading a book", local_output_path: str = "./
         operation = client.operations.get(operation)
         print(f"Operation status: {operation}")
 
-    # Check for errors
+    # Error Handling
     if operation.error:
         raise Exception(f"Video generation failed: {operation.error}")
 
@@ -107,7 +109,7 @@ def gcp_veo_3(prompt: str = "a cat reading a book", local_output_path: str = "./
         blob.download_to_filename(local_output_path)
         print(f"Video downloaded to: {local_output_path}")
 
-        # Optionally, delete the file from GCS to clean up
+        # Delete the file from GCS
         blob.delete()
         print(f"Video deleted from GCS: {video_uri}")
 
@@ -116,18 +118,86 @@ def gcp_veo_3(prompt: str = "a cat reading a book", local_output_path: str = "./
         raise Exception("No video generated or response is empty")
 
 
-def show_video(gcs_uri):
-    file_name = gcs_uri.split("/")[-1]
-    # !gsutil cp {gcs_uri} {file_name}
-    media.show_video(media.read_video(file_name), height=500)
+def hailuo_text_to_video(
+        prompt: str,
+        model: str = "T2V-01-Director",
+        output_file_name: str = "output.mp4",
+        api_key: str = ""
+) -> str:
+    def invoke_video_generation()->str:
+        print("-----------------Submit video generation task-----------------")
+        url = "https://api.minimaxi.chat/v1/video_generation"
+        payload = json.dumps({
+          "prompt": prompt,
+          "model": model
+        })
+        headers = {
+          'authorization': 'Bearer ' + api_key,
+          'content-type': 'application/json',
+        }
+
+        response = requests.request("POST", url, headers=headers, data=payload)
+        print(response.text)
+        task_id = response.json()['task_id']
+        print("Video generation task submitted successfully, task ID.："+task_id)
+        return task_id
+
+    def query_video_generation(task_id: str):
+        url = "https://api.minimaxi.chat/v1/query/video_generation?task_id="+task_id
+        headers = {
+          'authorization': 'Bearer ' + api_key
+        }
+        response = requests.request("GET", url, headers=headers)
+        status = response.json()['status']
+        if status == 'Preparing':
+            print("...Preparing...")
+            return "", 'Preparing'
+        elif status == 'Queueing':
+            print("...In the queue...")
+            return "", 'Queueing'
+        elif status == 'Processing':
+            print("...Generating...")
+            return "", 'Processing'
+        elif status == 'Success':
+            return response.json()['file_id'], "Finished"
+        elif status == 'Fail':
+            return "", "Fail"
+        else:
+            return "", "Unknown"
 
 
-def display_images(image) -> None:
-    fig, axis = plt.subplots(1, 1, figsize=(12, 6))
-    axis.imshow(image)
-    axis.set_title("Starting Image")
-    axis.axis("off")
-    plt.show()
+    def fetch_video_result(file_id: str):
+        print("---------------Video generated successfully, downloading now---------------")
+        url = "https://api.minimaxi.chat/v1/files/retrieve?file_id="+file_id
+        headers = {
+            'authorization': 'Bearer '+api_key,
+        }
+
+        response = requests.request("GET", url, headers=headers)
+        print(response.text)
+
+        download_url = response.json()['file']['download_url']
+        print("Video download link：" + download_url)
+        with open(output_file_name, 'wb') as f:
+            f.write(requests.get(download_url).content)
+        print("THe video has been downloaded in："+os.getcwd()+'/'+output_file_name)
+
+
+    task_id = invoke_video_generation()
+    print("-----------------Video generation task submitted -----------------")
+    while True:
+        time.sleep(10)
+
+        file_id, status = query_video_generation(task_id)
+        if file_id != "":
+            fetch_video_result(file_id)
+            print("---------------Successful---------------")
+            break
+        elif status == "Fail" or status == "Unknown":
+            print("---------------Failed---------------")
+            break
+
+    return os.getcwd()+'/'+output_file_name
 
 
 # Only available for cuda / cpu
