@@ -6,3 +6,5 @@ gradio
 google-genai
 mediapy
 google-cloud-aiplatform
+openai
+dotenv
