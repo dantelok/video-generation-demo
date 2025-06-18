@@ -1,16 +1,16 @@
 import json
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
+import os
+import time
 from dotenv import load_dotenv
 from openai import OpenAI
-import os
+
+from main import generate_video
 
 # Load env for OpenAI
 load_dotenv()
 client = OpenAI()
 
 
-# --- Step 1: Convert Storyboard to Pseudo-Video ---
 def storyboard_to_pseudo_video(storyboard):
     return {
         "scene": storyboard["scene"],
@@ -28,33 +28,13 @@ def storyboard_to_pseudo_video(storyboard):
     }
 
 
-# --- Step 2: Render Animation using Matplotlib ---
-def render_pseudo_video(pseudo_video, save_path="preview.gif"):
-    fig, ax = plt.subplots()
-    ax.set_xlim(0, 10)
-    ax.set_ylim(0, 1)
-    ax.set_title(f"{pseudo_video['scene']} ({pseudo_video['camera']}, {pseudo_video['characters'][0]['emotion']})")
-
-    # Setup character
-    character = pseudo_video['characters'][0]
-    emoji = character['emoji']
-    duration = pseudo_video['duration_sec']
-    frames = duration * 10  # 10 fps
-
-    text_obj = ax.text(0, 0.5, emoji, fontsize=30)
-
-    def update(frame):
-        x = (frame / frames) * 10
-        text_obj.set_position((x, 0.5))
-        return text_obj,
-
-    ani = animation.FuncAnimation(fig, update, frames=int(frames), blit=True)
-    ani.save(save_path, writer="pillow", fps=10)
-    plt.close()
-    print(f"Saved animation to {save_path}")
+# Generate natural language transition description
+def generate_transition_description(previous_state, next_state, i):
+    # You can replace this with GPT for smarter descriptions
+    return f"Transition {i+1}: The character continues to walk through the {next_state['scene']} with a {next_state['characters'][0]['emotion']} expression."
 
 
-# --- Step 3: Convert Pseudo-Video to Gen-2 Prompt ---
+# Convert pseudo-video spec to text prompt
 def pseudo_video_to_prompt(pseudo_video):
     scene = pseudo_video["scene"]
     emotion = pseudo_video["characters"][0]["emotion"]
@@ -71,18 +51,51 @@ def pseudo_video_to_prompt(pseudo_video):
     return prompt
 
 
+# Iterative Process
+def build_scene_sequence(storyboard, model_id, num_keyframes=12):
+    pseudo_video = storyboard_to_pseudo_video(storyboard)
+    print("Pseudo-Video Spec:\n", json.dumps(pseudo_video, indent=2))
+
+    previous_state = pseudo_video
+    scene_sequence = []
+
+    for i in range(num_keyframes):
+        # 1️⃣ Generate transition text
+        transition_text = generate_transition_description(previous_state, pseudo_video, i)
+
+        # 2️⃣ Generate video prompt
+        video_prompt = pseudo_video_to_prompt(pseudo_video)
+
+        # 3️⃣ Generate video clip
+        video_path = generate_video(video_prompt, model_id)
+
+        # 4️⃣ Save this step
+        scene_sequence.append({
+            "transition_text": transition_text,
+            "prompt": video_prompt,
+            "video_path": video_path
+        })
+
+        # Optional: Update pseudo_video for next iteration if needed
+        # Example: character moves deeper, emotion changes, etc.
+
+    return scene_sequence
+
+
 if __name__ == "__main__":
-    # Simulate storyboard input
+    os.makedirs("output", exist_ok=True)
+
+    # Example storyboard
     storyboard = {
         "scene": "misty forest",
         "shot_type": "wide shot",
         "emotion": "mysterious"
     }
 
-    pseudo_video = storyboard_to_pseudo_video(storyboard)
-    print("Pseudo-Video Spec:\n", json.dumps(pseudo_video, indent=2))
+    scene_sequence = build_scene_sequence(storyboard, model_id="Veo-2", num_keyframes=3)
 
-    render_pseudo_video(pseudo_video, save_path="forest_demo.gif")
-
-    gen2_prompt = pseudo_video_to_prompt(pseudo_video)
-    print("\nPrompt for Gen-2:\n", gen2_prompt)
+    print("\n--- Final Scene Sequence ---")
+    for i, step in enumerate(scene_sequence):
+        print(f"\nKeyframe {i+1}:")
+        print("Transition:", step["transition_text"])
+        print("Video:", step["video_path"])
