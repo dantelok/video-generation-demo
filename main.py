@@ -4,21 +4,9 @@ import gradio as gr
 import json
 
 from cinematic_planning import build_scene_sequence
+from generation import generate_video
 from prompt_template_control import generate_video_prompt_with_template
 from storyboard import generate_multiple_storyboards
-from generation import wan_text_to_video, gcp_veo, hailuo_text_to_video
-
-
-def generate_video(prompt, model_id, negative_prompt=None):
-    if model_id == "Wan2.1":
-        video_path = wan_text_to_video(prompt, negative_prompt)
-    elif model_id == "SkyReels-V2":
-        raise ValueError("SkyReels-V2 model not yet implemented.")
-    elif model_id == "Veo-2":
-        video_path = gcp_veo(prompt, local_output_path="output/cat_reading_book.mp4")
-    elif model_id == "T2V-01-Director":
-        video_path = hailuo_text_to_video(prompt)
-    return video_path
 
 
 def save_storyboard_choice(choice: Dict[str, str]):

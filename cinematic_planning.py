@@ -1,10 +1,9 @@
 import json
 import os
-import time
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from main import generate_video
+from generation import generate_video
 
 # Load env for OpenAI
 load_dotenv()

@@ -1,3 +1,5 @@
+import uuid
+
 import torch
 from diffusers.utils import export_to_video
 from diffusers import AutoencoderKLWan, WanPipeline
@@ -50,7 +52,7 @@ def wan_text_to_video(prompt, negative_prompt):
     return "output.mp4"
 
 
-def gcp_veo(prompt: str = "a cat reading a book", local_output_path: str = "./generated_video.mp4"):
+def gcp_veo(prompt: str = "a cat reading a book"):
     PROJECT_ID = "gcp-credit-applying-to-g-suite"
     LOCATION = os.environ.get("GOOGLE_CLOUD_REGION", "us-central1")
     BUCKET_NAME = "dante-test-123456-output"
@@ -101,6 +103,8 @@ def gcp_veo(prompt: str = "a cat reading a book", local_output_path: str = "./ge
         bucket = storage_client.bucket(BUCKET_NAME)
         blob_name = video_uri.replace(f"gs://{BUCKET_NAME}/", "")
         blob = bucket.blob(blob_name)
+
+        local_output_path = f"output/sample-{uuid.uuid1()}.mp4"
 
         # Ensure local directory exists
         os.makedirs(os.path.dirname(local_output_path), exist_ok=True)
@@ -199,6 +203,17 @@ def hailuo_text_to_video(
 
     return os.getcwd()+'/'+output_file_name
 
+def generate_video(prompt, model_id, negative_prompt=None):
+    video_path = None
+    if model_id == "Wan2.1":
+        video_path = wan_text_to_video(prompt, negative_prompt)
+    elif model_id == "SkyReels-V2":
+        raise ValueError("SkyReels-V2 model not yet implemented.")
+    elif model_id == "Veo-2":
+        video_path = gcp_veo(prompt)
+    elif model_id == "T2V-01-Director":
+        video_path = hailuo_text_to_video(prompt)
+    return video_path
 
 # Only available for cuda / cpu
 # wan_text_to_video()
